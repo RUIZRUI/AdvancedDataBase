@@ -1,0 +1,20 @@
+<!doctype html public "-//w3c//dtd html 4.0 transitional//en">
+<html><head>
+   <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+   <meta name="GENERATOR" content="Mozilla/4.7 [fr] (Win98; I) [Netscape]">
+   <title>List a part</title>
+</head>
+
+<body text="#000000" bgcolor="#B7D0C1" link="#0000EE" vlink="#551A8B" alink="#FF0000">
+<center><h1><font color="#CCFFFF"></font>8trd157 - lab6<br><br>List part</h1>
+<br><br><br><br>
+<p><h4><center>Execution of the following command :
+ <i>select po.po_number, po.po_date, pa.pa_name, s.supplier_id, s.supplier_name, s.addr, s.contact, p.product_id, p.product_name, p.unit, p.unit_price, d.qty_order, d.qty_rec from purchase_order po, contractual c, pa_task pt, pa_agent pa, supplier s, detail d, product p where po.po_number= like '$num' and c.po_number=like '$num' and pt.po_number=like '$num' and pa.emp_num=pt.emp_num and s.supplier_id=c.supplier_id and d.po_number=like '$num' and d.product_id=p.product_id</i></h4>
+<br><h3>Enter a po number (complete or partial  from 9501-9502)</h3>
+
+<form action="request2.php" method="post">
+<input type=text name="ponumber" size=4>
+<input type="submit" value="Submit"></center>
+</form>
+</body></html>
+

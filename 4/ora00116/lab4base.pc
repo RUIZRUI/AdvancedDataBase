@@ -1,0 +1,406 @@
+/*
+*       Author:         Paul Girard Ph.D., UQAC
+*       Date:           May 2019
+*       Objective:      Program using Pro*C/C++ and gcc to show how to use 
+*                       different type of PL/SQL blocks & SQL in a C PGM
+*
+*       Step 1: Precompilation with Pro*C/C++
+* proc INAME=lab4base.pc CODE=ANSI_C SQLCHECK=semantics MODE=oracle USERID=user/password CHAR_MAP=charz
+*
+*       Step 2: Compilation with gcc    
+* gcc lab4base.c -o lab4base -include /$ORACLE_HOME/precomp/public/sqlca.h -lclntsh -B$ORACLE_HOME/lib/ -B$ORACLE_HOME/lib
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+ 
+void sql_error();
+void do_connect();
+void lispart();
+void respon();
+void modstat();
+void deletion();
+int print_menu();
+void modresp();
+void quant();
+void invent();
+void value();
+
+int main()
+{ 
+        EXEC SQL WHENEVER SQLERROR do sql_error("Error at connect"); 
+        
+        do_connect();           /* connection to Oracle instance */
+
+/*      Display the program menu
+*       and execution of the transaction 
+*/
+        
+        while (1)       /* infinite loop */
+        {
+         switch (print_menu())
+         {
+          case 1: lispart();
+                  break;
+          case 2: respon();
+                  break;
+          case 3: modstat();
+                  break;
+          case 4: deletion();
+                  break;
+          case 5: modresp();
+                  break;
+          case 6: quant();
+                  break;
+          case 7: invent();
+                  break;
+          case 8: value();
+                  break;
+          case 9: print_menu();
+                  break;
+          case 10: puts("\nAu revoir Sayonara Bye bye, Ni Hao"); 
+                exit(0);
+          default: puts("\n =====> Enter a digit from the menu please ?");
+                   break;
+         }
+        }
+        
+        EXEC SQL COMMIT WORK RELEASE;           /* lib�re les verroux et d�connecte */
+                                        
+        exit(0); 
+}                       /* end of main() program */
+
+/* ******************************************************************************************
+*       Function to display the original error Oracle message 
+*  ******************************************************************************************
+*/
+
+void sql_error(char *msg)
+{
+        char ora_msg[512];                      /* buffer for Oracle error message */
+        int buf_len, msg_len;
+        
+        EXEC SQL WHENEVER SQLERROR continue;    /* Prevent an infinite loop */
+        
+        printf("\n%s\n",msg);                   /* print the local program message */
+        buf_len=sizeof(ora_msg);
+        
+        sqlglm(ora_msg,&buf_len, &msg_len);     /* read the Oracle error message */
+        printf("\n%.*s\n",msg_len, ora_msg);    /* print this message */
+        
+        EXEC SQL ROLLBACK RELEASE;              /* free locks */
+        exit(1);
+}               /*      fin de sql_error */
+
+/* ******************************************************************************************
+*       Function to do a connection to an Oracle user schema
+*  ******************************************************************************************
+*/
+
+void do_connect()
+{
+   char *uid="ora00116/yGcXHc";
+
+        EXEC SQL CONNECT :uid; 
+        printf("Connected to Oracle schema\n");
+}
+
+/* ******************************************************************************************
+*       Function to display the contents of a given part
+*  ******************************************************************************************
+*/
+
+void lispart()
+{
+char    description[16];     /* C needs 1 more octet than Oracle for binary 0 
+                                at the end of a C character type */
+int     my_partid, none=1;
+        for (;;)                /* infinite loop until user enter a 0 */
+        {
+                printf("Number of the part (0 to quit )? ");
+                scanf("%d",&my_partid);         
+
+                printf("Part Number : %d\n",my_partid);
+                if (my_partid == 0) 
+                { 
+                        EXEC SQL COMMIT; 
+                        printf("End of this transaction\n"); 
+                        break; 
+                } 
+
+/*-------------- Beginning the PL/SQL block -----------------*/ 
+
+        EXEC SQL EXECUTE
+        BEGIN 
+                SELECT part_name INTO :description      /* note: description needs 1 octet more */
+                FROM part WHERE part_id = :my_partid;
+                EXCEPTION
+                        WHEN NO_DATA_FOUND THEN 
+                        :none:=0;
+        END;
+        END-EXEC;
+
+/*-------------- end of PL/SQL block -----------------*/ 
+
+        if (none==0)  
+           {
+                printf("Record not found \n");
+                none=1;
+           }
+        else
+            {
+                printf("Name of the part\n"); 
+                printf("---------------\n"); 
+                printf("%s\n",description); 
+            }
+        EXEC SQL COMMIT;
+        }                               /* end of infinite loop */
+        return; 
+}
+
+/* *************************************************************
+*       Function to display each part with the responsible agent
+*  *************************************************************
+*/
+
+void respon()
+{
+int     my_emp_num, my_partid;
+char    description[16];        /* 1 more octet for the binary 0 */
+char    my_pa_name[16];         /* 1 more octet for the binary 0 */
+                        
+        EXEC SQL declare c1 cursor for
+                select p.part_id, p.part_name, pa.emp_num, pa.pa_name 
+                from part p, responsible r, pa_agent pa 
+                where pa.emp_num=r.emp_num and p.part_id=r.part_id;
+        
+        EXEC SQL open c1;
+
+        EXEC SQL WHENEVER NOT FOUND do break;
+        
+        printf("\tPart ID\tName of Part\t\tEmp Number\tAgent\n");       
+        for (;;)
+        {
+                EXEC SQL fetch c1 into :my_partid, :description, :my_emp_num, :my_pa_name ;
+
+                printf("\t%4d\t%s\t\t%4d\t%s\n",my_partid, description,my_emp_num,my_pa_name);
+        }
+        
+        printf("End of this transaction\n");
+        EXEC SQL close c1;                      
+        EXEC SQL COMMIT;                /* free locks and keep the connection */
+        return;
+}
+
+/* ******************************************************************************************
+*       Function modifying the status of a part
+*  ******************************************************************************************
+*/
+
+void modstat()
+{
+int     num, tstcode;    
+        for (;;)
+        {
+                printf("Enter the part id to change its status to inactive (0 to exit)? ");
+                scanf("%d",&num);
+                if (num == 0) 
+                {
+                        printf("End of this transaction\n"); 
+                        return; 
+                } 
+
+/*-------------- beginning of PL/SQL block with local procedure  -----------------*/ 
+
+                EXEC SQL EXECUTE
+                DECLARE         
+                procedure mod_status(no IN integer, stat OUT integer) is
+                BEGIN
+                        stat := 1;
+                        update part2 set status='I' where part_id = no;
+                        if SQL%NOTFOUND then stat:=0; 
+                        end if;                                                 
+                END; 
+                BEGIN           -- execution part       
+                        mod_status(:num, :tstcode);                      
+                        commit;                                 
+                END;
+                END-EXEC;
+
+/*-------------- end of PL/SQL block -----------------*/ 
+
+        if (tstcode==0)  
+           {
+                printf("Record not found \n");  
+           }
+        else    printf("Modification done\n"); 
+        }
+        return;
+}
+
+/* *******************************************************************************
+*       Function to delete a part from the table part2 ; the stocked procedure
+*       must be created before this block
+*  *******************************************************************************
+*/
+
+void deletion()
+{
+int     num, stat=1;    
+        for (;;)
+        {
+        printf("\nEnter the number of the part in part2 to be deleted (0 to quit)? ");
+        scanf("%d",&num);
+        if (num == 0) 
+        {
+                printf("End of this transaction\n"); 
+                return; 
+        }
+        EXEC SQL EXECUTE
+        BEGIN
+                del_part2(:num);
+                if SQL%NOTFOUND then :stat:=0;
+                end if;
+                commit;
+        END;
+        END-EXEC;
+        if (stat==0)  
+        {
+         printf("part not found \n");   
+        }
+        else    printf("Part deleted\n");
+        }
+        return;
+}
+
+/* ************************************************************
+*       Function print the menu and choose the transaction
+*  ************************************************************
+*/
+
+int print_menu()
+{
+   int choice;                          /* id of menu */
+        printf("\n\t Choose a transaction by entering a number \n");
+        printf("\t *****************************************\n");
+        printf("\t (1) LISPART\n");
+        printf("\t (2) RESPON\n");
+        printf("\t (3) MODSTAT\n");
+        printf("\t (4) DELETION\n");
+        printf("\t (5) modresp()\n");
+        printf("\t (6) quant()\n");
+        printf("\t (7) invent()\n");
+        printf("\t (8) value()\n");
+        printf("\t (9) DISPLAY MENU\n");
+        printf("\t (10) QUIT\n");
+        printf("Enter your choice ? "); 
+        scanf("%d",&choice);            /* read the choice */
+        return choice;
+}
+
+void modresp()
+{
+        int num1, num2;
+        for(;;)
+        {
+                printf("Enter a part number please(o to exit)\n");
+                scanf("%d",&num1);
+                if(num1 == 0)
+                {
+                        printf("End\n");
+                        return;
+                }
+                printf("Enter a pa number please\n");
+                scanf("%d",&num2);
+                EXEC SQL EXECUTE
+                BEGIN
+                        update responsible
+                        set emp_num=:num2
+                        where part_id=:num1;
+                        commit;
+                END;
+                END-EXEC;
+        }
+        return;
+}
+
+void quant()
+{
+        int num;
+        int my_po_number;
+        char my_po_date[20];
+        float my_po_total;
+        char my_po_status[20];
+        printf("Enter a emu number please\n");
+        scanf("%d",&num);
+        EXEC SQL declare quant_c1 cursor for 
+                select po.po_number, po.po_date, po.total, po.status 
+                from pa_task pt, purchase_order po 
+                where po.po_number=pt.po_number and pt.emp_num=:num;
+        
+        
+        EXEC SQL open quant_c1;
+        EXEC SQL WHENEVER NOT FOUND do break;
+        printf("\tpo_number\tpo_date\ttotal\tstatus\n");
+        for(;;)
+        {
+                EXEC SQL fetch quant_c1 into :my_po_number, :my_po_date, :my_po_total, :my_po_status;
+                printf("\t%d\t%s\t%6.2f\t%s\n", my_po_number, my_po_date, my_po_total, my_po_status);
+        }
+        printf("End");
+        EXEC SQL close quant_c1;
+        EXEC SQL COMMIT;
+        return;
+}
+
+void invent()
+{
+        int my_part_id;
+        int sum;
+        EXEC SQL declare invent_c1 cursor for select distinct part_id from part;
+        EXEC SQL declare invent_c2 cursor for select sum(stock_qty) from part;
+        EXEC SQL open invent_c1;
+        EXEC SQL WHENEVER NOT FOUND do break;
+        printf("\tpart_id\n");
+        for(;;)
+        {
+                EXEC SQL fetch invent_c1 into :my_part_id;
+                printf("\t%d\n", my_part_id);
+        }
+        printf("End1");
+        EXEC SQL close invent_c1;
+        EXEC SQL COMMIT;
+
+        EXEC SQL open invent_c2;
+        EXEC SQL WHENEVER NOT FOUND do break;
+        printf("\tsum\n");
+        for(;;)
+        {
+                EXEC SQL fetch invent_c2 into :sum;
+                printf("\t%d\n", sum);
+        }
+        printf("End2");
+        EXEC SQL close invent_c2;
+        EXEC SQL COMMIT;
+        return;
+}
+
+
+void value()
+{
+        int sum;
+        EXEC SQL declare value_c1 cursor for select sum(unit_price) from part;
+        EXEC SQL open value_c1;
+        EXEC SQL WHENEVER NOT FOUND do break;
+        printf("\tsum\n");
+        for(;;)
+        {
+                EXEC SQL fetch value_c1 into :sum;
+                printf("\t%d\n", sum);
+        }
+        printf("End1");
+        EXEC SQL close value_c1;
+        EXEC SQL COMMIT;
+
+        return;
+}

@@ -1,0 +1,1 @@
+proc INAME=lab4base.pc CODE=ANSI_C SQLCHECK=semantics mode=oracle userid=ora00115/UdfP94 char_map=charz
