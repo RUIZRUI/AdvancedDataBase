@@ -1,5 +1,9 @@
 # AdvancedDataBase
 
+[课程主页](http://www.uqac.ca/pgirard/english_version/trd157/)
+
+*pgirard/tjut157april22*
+
 ## Lab1
 *visio文件，ER图，事务分析*
 
